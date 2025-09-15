@@ -5,6 +5,7 @@ import sys
 import json
 from datetime import datetime, timezone
 from .scanners.port_scanner import scan_ports, scan_ports_full
+from .api.endpoints import bp as api_bp
 
 def is_valid_target(target):
     # Simple validation for IP or domain
@@ -19,12 +20,23 @@ app = Flask(__name__)
 app.config['CORS_HEADERS'] = 'Content-Type'
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+        "origins": ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5000"],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
         "supports_credentials": True
     }
 })
+
+# Register API blueprint
+app.register_blueprint(api_bp)
+
+# Enable CORS for all routes
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
 
 def handle_scan(target, scan_type='quick'):
     """Handle the scanning logic for both endpoints"""
