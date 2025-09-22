@@ -16,6 +16,11 @@ def is_valid_target(target):
         return False
 
 app = Flask(__name__)
+
+# Configure cache for rate limiting
+app.config['CACHE_TYPE'] = 'simple'
+app.cache = {}
+
 # Configure CORS to allow all origins and headers for development
 app.config['CORS_HEADERS'] = 'Content-Type'
 CORS(app, resources={
