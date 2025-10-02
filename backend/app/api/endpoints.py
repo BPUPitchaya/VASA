@@ -1,15 +1,18 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, send_file
 import asyncio
 import logging
 import uuid
 from typing import Dict, Any, Optional
 import time
+import os
+from io import BytesIO
 
 from ..scanners.scan_config import ScanConfig, ScanMode
 from ..scanners.scan_manager import ScanManager
 from ..middleware.rate_limiter import rate_limit
 from ..middleware.safety_checks import safety_checker
-from ..db import save_scan, update_scan_status, get_scan, get_recent_scans
+from ..db import save_scan, update_scan_status, get_scan, get_recent_scans as db_get_recent_scans
+from ..utils.report_generator import generate_scan_report
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +54,52 @@ def get_scan_status(scan_id: str):
         
     return jsonify(scan)
 
+@bp.route('/scan/<scan_id>/report', methods=['GET'])
+@rate_limit(max_requests=30, window=60)  # 30 requests per minute for reports
+def get_scan_report(scan_id: str):
+    """
+    Generate and download a PDF report for a scan.
+    
+    Response:
+        PDF file attachment
+    """
+    try:
+        # Get scan data
+        scan = get_scan(scan_id)
+        if not scan:
+            logger.warning(f'Scan not found: {scan_id}')
+            return jsonify({
+                'status': 'error',
+                'message': 'Scan not found'
+            }), 404
+        
+        logger.info(f'Generating report for scan: {scan_id}')
+        
+        # Generate PDF
+        pdf_buffer = generate_scan_report(scan)
+        
+        # Return as downloadable file
+        response = send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=f'scan_report_{scan_id}.pdf',
+            mimetype='application/pdf'
+        )
+        
+        # Set cache control headers
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f'Error generating report for scan {scan_id}: {str(e)}', exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to generate report: {str(e)}'
+        }), 500
+
 @bp.route('/scans/recent', methods=['GET'])
 @rate_limit(max_requests=60, window=60)  # 60 requests per minute
 def list_recent_scans():
@@ -77,7 +126,8 @@ def list_recent_scans():
     try:
         # Get limit from query params, default to 10, max 50
         limit = min(int(request.args.get('limit', 10)), 50)
-        scans = get_recent_scans(limit)
+        # Call the database function with the limit parameter
+        scans = db_get_recent_scans(limit=limit)
         
         # Format the response
         formatted_scans = []

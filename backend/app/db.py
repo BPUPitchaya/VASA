@@ -2,21 +2,38 @@ import sqlite3
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
+import os
 
-# Database file will be created in the same directory as this file
-DB_PATH = Path(__file__).parent / 'scans.db'
+# Database file will be created in the instance directory
+DB_DIR = Path(__file__).parent.parent / 'instance'
+DB_PATH = DB_DIR / 'scans.db'
 
-def get_connection():
-    """Get a database connection."""
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row  # Access columns by name
-    return conn
+# Flag to track if database has been initialized
+_db_initialized = False
 
 def init_db():
-    """Initialize the database with required tables."""
-    with get_connection() as conn:
-        conn.execute('''
+    """Initialize the database if it doesn't exist."""
+    global _db_initialized
+    
+    if _db_initialized:
+        return
+        
+    # Create instance directory if it doesn't exist
+    DB_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Connect to the database (creates it if it doesn't exist)
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Enable foreign keys
+        cursor.execute('PRAGMA foreign_keys = ON')
+        
+        # Create scans table if it doesn't exist
+        cursor.execute('''
         CREATE TABLE IF NOT EXISTS scans (
             id TEXT PRIMARY KEY,
             target TEXT NOT NULL,
@@ -30,10 +47,27 @@ def init_db():
             results TEXT
         )
         ''')
+        
         conn.commit()
+        _db_initialized = True
+        print("Database initialized successfully")
+    except Exception as e:
+        print(f"Error initializing database: {e}")
+        raise
+    finally:
+        conn.close()
 
-# Initialize database when this module is imported
-init_db()
+def get_connection() -> sqlite3.Connection:
+    """Get a database connection."""
+    # Initialize the database if not already done
+    if not _db_initialized:
+        init_db()
+        
+    # Create and return a new connection
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
+    return conn
 
 def save_scan(scan_id: str, target: str, scan_type: str, authorized: bool, client_ip: str):
     """Save a new scan to the database."""
