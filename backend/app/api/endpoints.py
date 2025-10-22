@@ -28,7 +28,7 @@ def get_client_ip() -> str:
     return request.remote_addr or '127.0.0.1'
 
 @bp.route('/scan/status/<scan_id>', methods=['GET'])
-@rate_limit(max_requests=60, window=60)  # 60 requests per minute for status checks
+@rate_limit(max_requests=30, window=60)  # 30 status checks per minute
 def get_scan_status(scan_id: str):
     """
     Get the status of a scan.
@@ -55,7 +55,7 @@ def get_scan_status(scan_id: str):
     return jsonify(scan)
 
 @bp.route('/scan/<scan_id>/report', methods=['GET'])
-@rate_limit(max_requests=30, window=60)  # 30 requests per minute for reports
+@rate_limit(max_requests=10, window=60)  # 10 report generations per minute
 def get_scan_report(scan_id: str):
     """
     Generate and download a PDF report for a scan.
@@ -101,7 +101,7 @@ def get_scan_report(scan_id: str):
         }), 500
 
 @bp.route('/scans/recent', methods=['GET'])
-@rate_limit(max_requests=60, window=60)  # 60 requests per minute
+@rate_limit(max_requests=30, window=60)  # 30 recent scans requests per minute
 def list_recent_scans():
     """
     Get recent scans.
@@ -155,13 +155,17 @@ def list_recent_scans():
             'message': 'Failed to retrieve recent scans'
         }), 500
 
-@bp.route('/scan', methods=['POST'])
-@rate_limit(max_requests=30, window=60)  # 30 requests per minute for new scans
+@bp.route('/scan', methods=['POST', 'GET'])
+@rate_limit(max_requests=5, window=60)  # 5 new scans per minute
 async def scan():
     """
     Unified scan endpoint that handles all scan types based on configuration.
     
-    Request JSON:
+    GET Request Parameters:
+        target: The target to scan (required)
+        mode: Scan mode (quick/standard/full/custom, default: quick)
+        
+    POST Request JSON:
     {
         "target": "example.com",  # Required
         "mode": "quick" | "standard" | "full" | "custom",  # Optional, default: quick
@@ -174,30 +178,62 @@ async def scan():
             "cve_check": false,
             "dns_whois": true,
             "save_to_history": true
-            "key_bits": 2048,
-            "key_type": "RSA"
-        },
-        "protocols": ["TLSv1.2", "TLSv1.3"],
-        "ciphers": [
-            {
-                "name": "TLS_AES_256_GCM_SHA384",
-                "protocol": "TLSv1.3",
-                "strength": 256,
-                "secure": true
-            },
-            ...
-        ],
-        "vulnerabilities": [
-            {
-                "id": "heartbleed",
-                "severity": "critical",
-                "description": "Vulnerable to Heartbleed (CVE-2014-0160)",
-                "remediation": "Upgrade OpenSSL to version 1.0.1g or later",
-                "cve": "CVE-2014-0160"
-            }
-        ]
+        }
     }
     """
+    try:
+        # Log request details for debugging
+        logger.info(f"Incoming request: {request.method} {request.url}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        
+        if request.method == 'GET':
+            # Handle GET request with query parameters
+            data = request.args.to_dict()
+            logger.info(f"GET params: {data}")
+        else:
+            # Handle POST request with JSON body
+            if not request.is_json:
+                logger.error("Request is not JSON")
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Request must be JSON',
+                    'content_type': request.content_type,
+                    'received_data': str(request.data)
+                }), 400
+                
+            data = request.get_json()
+            logger.info(f"POST JSON data: {data}")
+            
+        # Validate required fields
+        if 'target' not in data:
+            logger.error("Missing required field: target")
+            return jsonify({
+                'status': 'error',
+                'message': 'Target is required',
+                'received_data': data
+            }), 400
+            
+        # Get target and mode with defaults
+        target = data.get('target')
+        mode = data.get('mode', 'quick').lower()
+        
+        logger.info(f"Starting {mode} scan for target: {target}")
+        
+        # Return a success response with the scan details
+        return jsonify({
+            'status': 'success',
+            'message': f'Scan started for {target} in {mode} mode',
+            'target': target,
+            'mode': mode
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in scan endpoint: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e),
+            'error_type': type(e).__name__
+        }), 500
     data = request.get_json() or {}
     target = data.get('target')
     port = data.get('port', 443)

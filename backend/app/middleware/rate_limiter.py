@@ -1,8 +1,8 @@
 import time
 from collections import defaultdict, deque
 from functools import wraps
-from flask import request, jsonify, current_app
-from typing import Callable, Dict, Any, List, Tuple
+from flask import request, jsonify, current_app, make_response
+from typing import Callable, Dict, Any, List, Tuple, Optional
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -24,57 +24,71 @@ class RateLimiter:
         """
         self.max_requests = max_requests
         self.window = window
-        self.requests: Dict[str, deque] = defaultdict(deque)
+        self.requests: Dict[str, Dict[str, deque]] = defaultdict(lambda: defaultdict(deque))
         self.lock = threading.Lock()
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
     
-    def is_rate_limited(self, ip: str) -> bool:
-        """Check if an IP address has exceeded the rate limit.
+    def is_rate_limited(self, key: str, max_req: Optional[int] = None, win: Optional[int] = None) -> bool:
+        """
+        Check if a request should be rate limited.
         
         Args:
-            ip: IP address to check
+            key: Unique key for the rate limit (e.g., 'endpoint:ip')
+            max_req: Override for max_requests
+            win: Override for window
             
         Returns:
             bool: True if rate limited, False otherwise
         """
+        max_requests = max_req if max_req is not None else self.max_requests
+        window = win if win is not None else self.window
         current_time = time.time()
         
         with self.lock:
             # Remove old requests outside the window
-            while self.requests[ip] and self.requests[ip][0] <= current_time - self.window:
-                self.requests[ip].popleft()
+            while (self.requests[key]['timestamps'] and 
+                   self.requests[key]['timestamps'][0] <= current_time - window):
+                self.requests[key]['timestamps'].popleft()
             
             # Check if we've exceeded the limit
-            if len(self.requests[ip]) >= self.max_requests:
+            if len(self.requests[key]['timestamps']) >= max_requests:
                 return True
             
             # Add current request
-            self.requests[ip].append(current_time)
+            self.requests[key]['timestamps'].append(current_time)
             return False
     
-    def get_remaining_requests(self, ip: str) -> int:
-        """Get the number of remaining requests for an IP address.
+    def get_remaining_requests(self, key: str, max_req: Optional[int] = None, win: Optional[int] = None) -> int:
+        """
+        Get the number of remaining requests for a key.
         
         Args:
-            ip: IP address to check
+            key: Unique key for the rate limit
+            max_req: Override for max_requests
+            win: Override for window
             
         Returns:
             int: Number of remaining requests
         """
+        max_requests = max_req if max_req is not None else self.max_requests
+        window = win if win is not None else self.window
         current_time = time.time()
         
-        # Remove old requests outside the window
-        while self.requests[ip] and self.requests[ip][0] <= current_time - self.window:
-            self.requests[ip].popleft()
-        
-        return max(0, self.max_requests - len(self.requests[ip]))
+        with self.lock:
+            # Remove old requests outside the window
+            while (self.requests[key]['timestamps'] and 
+                   self.requests[key]['timestamps'][0] <= current_time - window):
+                self.requests[key]['timestamps'].popleft()
+            
+            return max(0, max_requests - len(self.requests[key]['timestamps']))
 
 # Global rate limiter instance with thread pool
 def get_rate_limiter():
     if not hasattr(current_app, '_rate_limiter'):
+        # Create a new rate limiter with default values (these will be overridden by decorators)
         current_app._rate_limiter = RateLimiter(
-            max_requests=100,
-            window=60,  # 100 requests per minute
+            max_requests=100,  # Default, but will be overridden by decorators
+            window=60,
             max_workers=10
         )
     return current_app._rate_limiter
@@ -93,88 +107,111 @@ def rate_limit(max_requests: int = 100, window: int = 60):
             @wraps(f)
             async def async_wrapper(*args, **kwargs):
                 rate_limiter = get_rate_limiter()
-                ip = request.remote_addr or 'unknown'
+                # Use the same IP resolution as in endpoints.py
+                if 'X-Forwarded-For' in request.headers:
+                    ip = request.headers['X-Forwarded-For'].split(',')[0].strip()
+                else:
+                    ip = request.remote_addr or 'unknown'
                 
-                # Check rate limit
-                if rate_limiter.is_rate_limited(ip):
+                # Create a unique key per endpoint and IP
+                endpoint_key = f"{request.endpoint}:{ip}"
+                
+                # Check rate limit for this specific endpoint and IP
+                if rate_limiter.is_rate_limited(endpoint_key, max_requests, window):
+                    remaining = rate_limiter.get_remaining_requests(endpoint_key, max_requests, window)
+                    reset_time = int(time.time() + window)
+                    
                     response = jsonify({
                         'status': 'error',
-                        'message': 'Rate limit exceeded. Please try again later.'
+                        'message': f'Rate limit exceeded. Please try again in {window} seconds.',
+                        'error': 'rate_limit_exceeded',
+                        'max_requests': max_requests,
+                        'window': window
                     })
                     response.status_code = 429
-                    reset_time = time.time() + window
-                    return add_rate_limit_headers(response, max_requests, 0, reset_time)
+                    response.headers['X-RateLimit-Limit'] = str(max_requests)
+                    response.headers['X-RateLimit-Remaining'] = '0'
+                    response.headers['X-RateLimit-Reset'] = str(reset_time)
+                    return response
                 
                 try:
                     # Call the async function
                     response = await f(*args, **kwargs)
                     
-                    # Add rate limit headers
-                    remaining = max(0, max_requests - len(rate_limiter.requests[ip]) - 1)
-                    reset_time = time.time() + window
-                    return add_rate_limit_headers(response, max_requests, remaining, reset_time)
+                    # Add rate limit headers to successful responses
+                    if isinstance(response, tuple) and len(response) == 2 and isinstance(response[1], int):
+                        # Handle (response, status_code) tuples
+                        resp, status = response
+                        resp = make_response(resp, status)
+                    else:
+                        resp = make_response(response)
+                    
+                    remaining = rate_limiter.get_remaining_requests(endpoint_key, max_requests, window)
+                    reset_time = int(time.time() + window)
+                    
+                    resp.headers['X-RateLimit-Limit'] = str(max_requests)
+                    resp.headers['X-RateLimit-Remaining'] = str(remaining)
+                    resp.headers['X-RateLimit-Reset'] = str(reset_time)
+                    
+                    return resp
                 except Exception as e:
                     current_app.logger.error(f"Error in rate-limited async function: {str(e)}")
                     raise
-            
             return async_wrapper
         else:
             @wraps(f)
             def sync_wrapper(*args, **kwargs):
                 rate_limiter = get_rate_limiter()
-                ip = request.remote_addr or 'unknown'
+                # Use the same IP resolution as in endpoints.py
+                if 'X-Forwarded-For' in request.headers:
+                    ip = request.headers['X-Forwarded-For'].split(',')[0].strip()
+                else:
+                    ip = request.remote_addr or 'unknown'
                 
-                # Check rate limit
-                if rate_limiter.is_rate_limited(ip):
+                # Create a unique key per endpoint and IP
+                endpoint_key = f"{request.endpoint}:{ip}"
+                
+                # Check rate limit for this specific endpoint and IP
+                if rate_limiter.is_rate_limited(endpoint_key, max_requests, window):
+                    remaining = rate_limiter.get_remaining_requests(endpoint_key, max_requests, window)
+                    reset_time = int(time.time() + window)
+                    
                     response = jsonify({
                         'status': 'error',
-                        'message': 'Rate limit exceeded. Please try again later.'
+                        'message': f'Rate limit exceeded. Please try again in {window} seconds.',
+                        'error': 'rate_limit_exceeded',
+                        'max_requests': max_requests,
+                        'window': window
                     })
                     response.status_code = 429
-                    reset_time = time.time() + window
-                    return add_rate_limit_headers(response, max_requests, 0, reset_time)
+                    response.headers['X-RateLimit-Limit'] = str(max_requests)
+                    response.headers['X-RateLimit-Remaining'] = '0'
+                    response.headers['X-RateLimit-Reset'] = str(reset_time)
+                    return response
                 
                 try:
                     # Call the sync function
                     response = f(*args, **kwargs)
                     
-                    # Add rate limit headers
-                    remaining = max(0, max_requests - len(rate_limiter.requests[ip]) - 1)
-                    reset_time = time.time() + window
-                    return add_rate_limit_headers(response, max_requests, remaining, reset_time)
+                    # Add rate limit headers to successful responses
+                    if isinstance(response, tuple) and len(response) == 2 and isinstance(response[1], int):
+                        # Handle (response, status_code) tuples
+                        resp, status = response
+                        resp = make_response(resp, status)
+                    else:
+                        resp = make_response(response)
+                    
+                    remaining = rate_limiter.get_remaining_requests(endpoint_key, max_requests, window)
+                    reset_time = int(time.time() + window)
+                    
+                    resp.headers['X-RateLimit-Limit'] = str(max_requests)
+                    resp.headers['X-RateLimit-Remaining'] = str(remaining)
+                    resp.headers['X-RateLimit-Reset'] = str(reset_time)
+                    
+                    return resp
                 except Exception as e:
                     current_app.logger.error(f"Error in rate-limited sync function: {str(e)}")
                     raise
             
             return sync_wrapper
     return decorator
-
-def add_rate_limit_headers(response, max_requests: int, remaining: int, reset_time: float):
-    """Add rate limit headers to the response."""
-    if hasattr(response, 'is_sequence') and not response.is_sequence:
-        # Streaming response
-        response.headers['X-RateLimit-Limit'] = str(max_requests)
-        response.headers['X-RateLimit-Remaining'] = str(remaining)
-        response.headers['X-RateLimit-Reset'] = str(int(reset_time))
-    elif not hasattr(response, 'headers'):
-        # Handle case where response is a tuple (data, status, headers)
-        if isinstance(response, tuple) and len(response) >= 2:
-            data, status, *rest = response
-            headers = {}
-            if len(rest) == 1 and isinstance(rest[0], dict):
-                headers = rest[0]
-            
-            headers.update({
-                'X-RateLimit-Limit': str(max_requests),
-                'X-RateLimit-Remaining': str(remaining),
-                'X-RateLimit-Reset': str(int(reset_time))
-            })
-            return data, status, headers
-        return response
-    else:
-        # Regular response with headers
-        response.headers['X-RateLimit-Limit'] = str(max_requests)
-        response.headers['X-RateLimit-Remaining'] = str(remaining)
-        response.headers['X-RateLimit-Reset'] = str(int(reset_time))
-    
-    return response

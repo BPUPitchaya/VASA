@@ -1,100 +1,194 @@
 from io import BytesIO
-import json
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
 from datetime import datetime
 import os
-from typing import Dict, Any, Union, List
+from typing import Dict, Any, List, Optional
 import logging
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Define styles at module level to avoid redefinition
-_styles = None
+# ---------- Header & Footer for each page ----------
+def add_header_footer(canvas, doc, scan_data):
+    """Add header and footer to each page of the PDF."""
+    width, height = A4
+    canvas.setStrokeColor(colors.HexColor('#2c3e50'))
+    canvas.setLineWidth(0.5)
+
+    # Header
+    canvas.line(15 * mm, height - 18 * mm, width - 15 * mm, height - 18 * mm)
+    canvas.setFont("Helvetica-Bold", 10)
+    canvas.drawString(15 * mm, height - 14 * mm, "VASA — Vulnerability Assessment Scanner Application")
+    
+    # Footer
+    canvas.setFont("Helvetica", 8)
+    # Draw the timestamp
+    timestamp = f"Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    canvas.drawString(15 * mm, 10 * mm, timestamp)
+    # Draw the page number
+    canvas.drawRightString(width - 15 * mm, 10 * mm, f"Page {doc.page}")
+    
+    # Set the page property for the next page
+    if hasattr(doc, '_pageNumber'):
+        doc._pageNumber += 1
+    else:
+        doc._pageNumber = 1
 
 def get_styles():
-    """Get or create styles, ensuring they're only created once."""
-    global _styles
-    if _styles is None:
-        try:
-            _styles = getSampleStyleSheet()
-            # Only add styles if they don't exist
-            if 'Title' not in _styles:
-                _styles.add(ParagraphStyle(
-                    name='Title', 
-                    fontSize=18, 
-                    alignment=1,  # center
-                    spaceAfter=20,
-                    fontName='Helvetica-Bold'
-                ))
-            if 'Heading1' not in _styles:
-                _styles.add(ParagraphStyle(
-                    name='Heading1',
-                    fontSize=14,
-                    spaceAfter=12,
-                    spaceBefore=20,
-                    fontName='Helvetica-Bold'
-                ))
-            if 'Normal_Justified' not in _styles:
-                _styles.add(ParagraphStyle(
-                    name='Normal_Justified',
-                    alignment=4,  # justify
-                    fontSize=10,
-                    leading=14,
-                    fontName='Helvetica'
-                ))
-            if 'Normal' not in _styles:
-                _styles.add(ParagraphStyle(
-                    name='Normal',
-                    fontSize=10,
-                    leading=12,
-                    fontName='Helvetica'
-                ))
-        except Exception as e:
-            logger.error(f"Error creating styles: {str(e)}", exc_info=True)
-            raise
-    return _styles
+    """Get or create styles for the PDF."""
+    # Create a simple dictionary to hold our styles
+    styles = {}
+    
+    # Base normal style
+    normal = ParagraphStyle(
+        'Custom_Normal',
+        fontName='Helvetica',
+        fontSize=10,
+        leading=12,
+        spaceAfter=10,
+        alignment=0  # Left align
+    )
+    styles['Normal'] = normal
+    
+    # Title style
+    styles['Report_Title'] = ParagraphStyle(
+        'Custom_Title',
+        parent=normal,
+        fontName='Helvetica-Bold',
+        fontSize=18,
+        spaceAfter=20,
+        textColor=colors.HexColor('#2c3e50'),
+        alignment=1  # Center align
+    )
+    
+    # Subtitle style
+    styles['Report_Subtitle'] = ParagraphStyle(
+        'Custom_Subtitle',
+        parent=normal,
+        alignment=1,  # Center align
+        fontSize=11,
+        textColor=colors.HexColor('#7f8c8d'),
+        spaceAfter=20
+    )
+    
+    # Heading 1 style
+    styles['Report_Heading1'] = ParagraphStyle(
+        'Custom_Heading1',
+        parent=normal,
+        fontName='Helvetica-Bold',
+        fontSize=14,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceBefore=15,
+        spaceAfter=10
+    )
+    
+    # Heading 2 style
+    styles['Report_Heading2'] = ParagraphStyle(
+        'Custom_Heading2',
+        parent=normal,
+        fontName='Helvetica-Bold',
+        fontSize=12,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceBefore=10,
+        spaceAfter=5
+    )
+    
+    # Normal justified style
+    styles['Report_Normal_Justified'] = ParagraphStyle(
+        'Custom_Normal_Justified',
+        parent=normal,
+        alignment=4,  # Justify
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=10
+    )
+    
+    # Vulnerability styles
+    styles['Report_Vulnerability_High'] = ParagraphStyle(
+        'Custom_Vulnerability_High',
+        parent=normal,
+        textColor=colors.HexColor('#e74c3c'),
+        backColor=colors.HexColor('#fadbd8'),
+        fontSize=9,
+        leading=12,
+        padding=3
+    )
+    
+    styles['Report_Vulnerability_Medium'] = ParagraphStyle(
+        'Custom_Vulnerability_Medium',
+        parent=normal,
+        textColor=colors.HexColor('#f39c12'),
+        backColor=colors.HexColor('#fef5e7'),
+        fontSize=9,
+        leading=12,
+        padding=3
+    )
+    
+    styles['Report_Vulnerability_Low'] = ParagraphStyle(
+        'Custom_Vulnerability_Low',
+        parent=normal,
+        textColor=colors.HexColor('#3498db'),
+        backColor=colors.HexColor('#ebf5fb'),
+        fontSize=9,
+        leading=12,
+        padding=3
+    )
+    
+    return styles
 
 def _create_metadata_table(scan_data: Dict[str, Any], styles: Dict) -> Table:
-    """Create a table with scan metadata."""
-    from reportlab.platypus import Table
+    """Create a table with scan metadata.
     
+    Args:
+        scan_data: Dictionary containing scan data
+        styles: Dictionary of styles
+        
+    Returns:
+        Table: Formatted table with metadata
+    """
     # Prepare data for the table
     data = [
-        ["Target:", scan_data.get('target', 'N/A')],
-        ["Scan ID:", scan_data.get('id', 'N/A')],
-        ["Status:", scan_data.get('status', 'N/A').title()],
-        ["Scan Type:", str(scan_data.get('scan_type', 'N/A')).title()],
-        ["Created At:", scan_data.get('created_at', 'N/A')],
-        ["Started At:", scan_data.get('started_at', 'N/A')],
-        ["Completed At:", scan_data.get('completed_at', 'N/A') or 'N/A']
+        ["Target", scan_data.get('target', 'N/A')],
+        ["Scan ID", scan_data.get('id', 'N/A')],
+        ["Status", scan_data.get('status', 'N/A').title()],
+        ["Scan Type", str(scan_data.get('scan_type', 'N/A')).title()],
+        ["Created At", scan_data.get('created_at', 'N/A')],
+        ["Started At", scan_data.get('started_at', 'N/A')],
+        ["Completed At", scan_data.get('completed_at', 'N/A') or 'N/A']
     ]
     
-    # Create table with 2 columns
-    table = Table(data, colWidths=[120, 300])
-    table.setStyle(TableStyle([
-        ('FONT', (0, 0), (-1, -1), 'Helvetica', 10),
-        ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 10),  # Make first column bold
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.black),
+    # Create table with 2 columns and apply styles
+    table_style = [
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dddddd')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f5f5f5')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#333333')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('PADDING', (0, 0), (-1, -1), 6),
-    ]))
+    ]
     
-    return table
+    return Table(data, colWidths=[40 * mm, None], style=table_style)
 
 def _create_vulnerabilities_table(vulns: List[Dict], styles: Dict) -> Table:
     """Create a table with vulnerabilities."""
     if not vulns:
-        return Paragraph("No vulnerabilities found.", styles['Normal'])
+        return [
+            Spacer(1, 10 * mm),
+            Paragraph("No vulnerabilities found.", styles['Report_Normal_Justified'])
+        ]
     
     # Prepare table data
     data = [
-        ["Severity", "Vulnerability", "Location", "Description"],
+        [
+            Paragraph("<b>Severity</b>", styles['Report_Normal_Justified']),
+            Paragraph("<b>Vulnerability</b>", styles['Report_Normal_Justified']),
+            Paragraph("<b>Location</b>", styles['Report_Normal_Justified']),
+            Paragraph("<b>Description</b>", styles['Report_Normal_Justified'])
+        ]
     ]
     
     for vuln in vulns:
@@ -132,6 +226,16 @@ def _create_vulnerabilities_table(vulns: List[Dict], styles: Dict) -> Table:
     
     return table
 
+
+def _get_severity_style(severity: str) -> str:
+    """Get the appropriate style for a given severity level."""
+    severity = (severity or '').lower()
+    if 'high' in severity or 'critical' in severity:
+        return 'Report_Vulnerability_High'
+    elif 'medium' in severity or 'moderate' in severity:
+        return 'Report_Vulnerability_Medium'
+    return 'Report_Vulnerability_Low'
+
 def generate_scan_report(scan_data: Dict[str, Any]) -> BytesIO:
     """
     Generate a PDF report for a vulnerability scan.
@@ -142,74 +246,157 @@ def generate_scan_report(scan_data: Dict[str, Any]) -> BytesIO:
     Returns:
         BytesIO: PDF file as bytes
     """
-    try:
-        # Initialize buffer and document
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(
-            buffer, 
-            pagesize=letter,
-            rightMargin=36,  # Reduced from 72 for more space
-            leftMargin=36,
-            topMargin=36,
-            bottomMargin=36,
-            title=f"Vulnerability Scan Report - {scan_data.get('id', '')}"
-        )
-        
-        # Get styles
-        styles = get_styles()
-        story = []
-        
-        # Add title
-        story.append(Paragraph("VULNERABILITY SCAN REPORT", styles['Title']))
-        story.append(Spacer(1, 10))
-        
-        # Add scan metadata table
-        story.append(Paragraph("Scan Information", styles['Heading1']))
-        story.append(_create_metadata_table(scan_data, styles))
-        story.append(Spacer(1, 20))
-        
-        # Add vulnerabilities section
-        story.append(Paragraph("Vulnerabilities Found", styles['Heading1']))
-        
-        # Check if we have results
-        results = scan_data.get('results')
-        if isinstance(results, str):
-            try:
-                results = json.loads(results)
-            except (json.JSONDecodeError, TypeError):
-                results = {'vulnerabilities': []}
-        
-        # Add vulnerabilities table
-        vulns = results.get('vulnerabilities', []) if isinstance(results, dict) else []
-        story.append(_create_vulnerabilities_table(vulns, styles))
-        story.append(Spacer(1, 20))
-        
-        # Add footer
-        story.append(Spacer(1, 20))
-        story.append(Paragraph("Report generated by VASA - Vulnerability Assessment and Scanning Application", 
-                             styles['Normal_Justified']))
-        
-        # Build the PDF
-        doc.build(story)
-        buffer.seek(0)
-        return buffer
-        
-    except Exception as e:
-        logger.error(f"Error generating report: {str(e)}", exc_info=True)
-        # Return a minimal error report
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter)
-        styles = get_styles()
-        story = [
-            Paragraph("Error Generating Report", styles['Title']),
-            Spacer(1, 20),
-            Paragraph(f"An error occurred while generating the report: {str(e)}", styles['Normal']),
-            Spacer(1, 20),
-            Paragraph("Please try again or contact support if the problem persists.", styles['Normal'])
+    # Create a buffer to store the PDF
+    buffer = BytesIO()
+    
+    # Get our custom styles
+    styles = get_styles()
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=22 * mm,
+        bottomMargin=20 * mm
+    )
+    
+    # Prepare elements list
+    elements = []
+    
+    # -------- Title Page --------
+    elements.append(Spacer(1, 30 * mm))
+    elements.append(Paragraph("Vulnerability Assessment Report", styles['Report_Title']))
+    elements.append(Spacer(1, 10 * mm))
+    
+    # Add target information
+    target = scan_data.get('target', 'N/A')
+    scan_type = scan_data.get('scan_type', 'N/A').title()
+    elements.append(Paragraph(f"Target: <b>{target}</b>", styles['Report_Subtitle']))
+    elements.append(Paragraph(f"Scan Type: {scan_type}", styles['Report_Subtitle']))
+    elements.append(Paragraph(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", styles['Report_Subtitle']))
+    elements.append(Spacer(1, 20 * mm))
+    
+    # -------- Section 1: Target Information --------
+    elements.append(Paragraph("1. Target Information", styles['Report_Heading1']))
+    elements.append(_create_metadata_table(scan_data, styles))
+    elements.append(Spacer(1, 10 * mm))
+    
+    # -------- Section 2: Summary of Findings --------
+    elements.append(Paragraph("2. Summary of Findings", styles['Report_Heading1']))
+    
+    # Count vulnerabilities by severity
+    vulns = scan_data.get('vulnerabilities', [])
+    severity_counts = {'high': 0, 'medium': 0, 'low': 0}
+    
+    for vuln in vulns:
+        sev = (vuln.get('severity', '').lower() or 'low').lower()
+        if 'high' in sev or 'critical' in sev:
+            severity_counts['high'] += 1
+        elif 'medium' in sev or 'moderate' in sev:
+            severity_counts['medium'] += 1
+        else:
+            severity_counts['low'] += 1
+    
+    total = sum(severity_counts.values())
+    
+    # Create summary table
+    summary_data = [
+        ["Total", "High", "Medium", "Low"],
+        [
+            str(total),
+            str(severity_counts['high']),
+            str(severity_counts['medium']),
+            str(severity_counts['low'])
         ]
-        doc.build(story)
-        buffer.seek(0)
-        return buffer
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[30 * mm] * 4)
+    summary_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.25, colors.HexColor('#bdc3c7')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f8f9fa')),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONT', (0, 0), (-1, -1), 'Helvetica', 10),
+        ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 10),
+        ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#e74c3c')),  # High count in red
+        ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#f39c12')),  # Medium count in orange
+        ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#3498db')),  # Low count in blue
+    ]))
+    
+    elements.append(summary_table)
+    elements.append(Spacer(1, 15 * mm))
+    
+    # -------- Section 3: Detailed Findings --------
+    if vulns:
+        elements.append(Paragraph("3. Detailed Findings", styles['Report_Heading1']))
+        
+        for i, vuln in enumerate(vulns, 1):
+            # Vulnerability header
+            severity = vuln.get('severity', 'Low').title()
+            severity_style = _get_severity_style(severity)
+            
+            elements.append(Paragraph(
+                f"{i}. {vuln.get('title', 'Untitled Vulnerability')}",
+                styles['Report_Heading2']
+            ))
+            
+            # Severity badge
+            elements.append(Paragraph(
+                f"Severity: {severity}",
+                styles[severity_style]
+            ))
+            
+            # Description
+            if 'description' in vuln:
+                elements.append(Paragraph("<b>Description:</b>", styles['Report_Normal_Justified']))
+                elements.append(Paragraph(vuln['description'], styles['Report_Normal_Justified']))
+            
+            # Location/Details
+            if 'location' in vuln or 'details' in vuln:
+                elements.append(Spacer(1, 5 * mm))
+                elements.append(Paragraph("<b>Details:</b>", styles['Report_Normal_Justified']))
+                
+                details = []
+                if 'location' in vuln:
+                    details.append(f"<b>Location:</b> {vuln['location']}")
+                if 'details' in vuln:
+                    if isinstance(vuln['details'], dict):
+                        for k, v in vuln['details'].items():
+                            details.append(f"<b>{k}:</b> {v}")
+                    else:
+                        details.append(str(vuln['details']))
+                
+                for detail in details:
+                    elements.append(Paragraph(detail, styles['Report_Normal_Justified']))
+            
+            # Recommendation
+            if 'recommendation' in vuln:
+                elements.append(Spacer(1, 5 * mm))
+                elements.append(Paragraph("<b>Recommendation:</b>", styles['Report_Normal_Justified']))
+                elements.append(Paragraph(vuln['recommendation'], styles['Report_Normal_Justified']))
+            
+            elements.append(Spacer(1, 10 * mm))
+    
+    # -------- Section 4: Notes --------
+    elements.append(Paragraph("4. Notes", styles['Report_Heading1']))
+    elements.append(Paragraph(
+        "This report was automatically generated by VASA. The information in this report is provided "
+        "for educational and testing purposes only. Ensure all scans are performed with proper authorization "
+        "and in compliance with applicable laws and regulations.",
+        styles['Report_Normal_Justified']
+    ))
+    
+    # Add page numbers and build the PDF
+    def on_page(canvas, doc):
+        add_header_footer(canvas, doc, scan_data)
+    
+    # Build the PDF
+    doc.build(elements, onFirstPage=on_page, onLaterPages=on_page)
+    
+    # Reset buffer position to the beginning
+    buffer.seek(0)
+    return buffer
     summary_data = [
         ['Status', scan_data.get('status', 'N/A')],
         ['Start Time', scan_data.get('started_at', 'N/A')],
@@ -232,11 +419,44 @@ def generate_scan_report(scan_data: Dict[str, Any]) -> BytesIO:
     story.append(summary_table)
     
     # Add vulnerabilities section if any
+    # Check if we need to add vulnerabilities section
     if 'vulnerabilities' in scan_data and scan_data['vulnerabilities']:
-        story.append(Spacer(1, 20))
-        story.append(Paragraph("Vulnerabilities Found", styles['Heading1']))
+        elements.append(Spacer(1, 10 * mm))
+        elements.append(Paragraph("Vulnerabilities Found", styles['Heading1']))
         
-        vuln_data = [['ID', 'Severity', 'Description', 'Remediation']]
+        # Add vulnerabilities table
+        vuln_data = [
+            [
+                Paragraph('<b>ID</b>', styles['Normal_Justified']),
+                Paragraph('<b>Severity</b>', styles['Normal_Justified']),
+                Paragraph('<b>Description</b>', styles['Normal_Justified']),
+                Paragraph('<b>Remediation</b>', styles['Normal_Justified'])
+            ]
+        ]
+        
+        for i, vuln in enumerate(scan_data['vulnerabilities'], 1):
+            severity_style = _get_severity_style(vuln.get('severity', 'low'))
+            vuln_data.append([
+                str(i),
+                Paragraph(vuln.get('severity', 'N/A').upper(), styles[severity_style]),
+                vuln.get('description', 'No description available'),
+                vuln.get('remediation', 'No remediation available')
+            ])
+        
+        # Create and style the table
+        vuln_table = Table(vuln_data, colWidths=[15*mm, 25*mm, 80*mm, 50*mm])
+        vuln_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f0f0f0')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONT', (0, 1), (-1, -1), 'Helvetica', 8),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('PADDING', (0, 0), (-1, -1), 4),
+        ]))
+        
+        elements.append(vuln_table)
         for vuln in scan_data['vulnerabilities']:
             severity = vuln.get('severity', 'unknown').lower()
             severity_color = {
@@ -304,17 +524,26 @@ def save_report_to_file(scan_data: Dict[str, Any], output_dir: str = 'reports') 
     Returns:
         str: Path to the saved report
     """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    try:
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        target_name = str(scan_data.get('target', 'scan')).replace('https://', '').replace('http://', '').replace('/', '_')
+        filename = f"vulnerability_scan_{target_name}_{timestamp}.pdf"
+        filepath = os.path.join(output_dir, filename)
+        
+        # Generate the PDF
+        pdf_content = generate_scan_report(scan_data)
+        
+        # Write to file
+        with open(filepath, 'wb') as f:
+            f.write(pdf_content.getvalue())
+        
+        logger.info(f"Report saved to {filepath}")
+        return filepath
     
-    # Generate filename
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"scan_report_{scan_data.get('id', '')}_{timestamp}.pdf"
-    filepath = os.path.join(output_dir, filename)
-    
-    # Generate and save the report
-    pdf = generate_scan_report(scan_data)
-    with open(filepath, 'wb') as f:
-        f.write(pdf.getbuffer())
-    
-    return filepath
+    except Exception as e:
+        logger.error(f"Error saving report: {str(e)}", exc_info=True)
+        raise
