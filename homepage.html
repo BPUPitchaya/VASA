@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VASA Home Page</title>
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="homepage.css">
+</head>
+<body>
+  <header class="header">
+    <h1>VASA Logo</h1>
+  </header>
+
+  <main class="container">
+    <!-- LEFT PANEL -->
+    <section class="left-panel">
+      <label for="target" class="label">Target</label>
+      <input type="text" id="target" placeholder="example.com or 192.168.x.x">
+
+      <div class="mode-selection">
+        <label><input type="radio" name="mode" value="Active" checked> Active Scanning</label>
+        <label><input type="radio" name="mode" value="Passive"> Passive Scanning</label>
+      </div>
+
+      <button id="start" class="btn start">Start Scanning</button>
+
+      <div id="progress-section" class="progress-container hidden">
+        <label>Scanning in Progress... <span id="progress-text">0%</span></label>
+        <div class="progress-bar">
+          <div id="progress-fill"></div>
+        </div>
+        <div class="buttons">
+          <button id="pause" class="btn pause">Pause</button>
+          <button id="stop" class="btn stop">Stop</button>
+        </div>
+      </div>
+
+      <div class="severity-indicator">
+        <h3>Severity Indicator</h3>
+        <div><span class="dot low"></span> Low Risk</div>
+        <div><span class="dot medium"></span> Medium Risk</div>
+        <div><span class="dot high"></span> High Risk</div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL -->
+    <section class="right-panel">
+      <h2>Results Overview</h2>
+      <p><strong>Target:</strong> <span id="result-target">-</span></p>
+      <p><strong>Mode:</strong> <span id="result-mode">-</span></p>
+      <p><strong>Date:</strong> <span id="result-date">dd.mm.yyyy</span></p>
+
+      <div class="summary">
+        <div class="box">
+          <p>Total Issues Found</p>
+          <h3 id="issue-count">0</h3>
+        </div>
+        <div class="box">
+          <p>Severity</p>
+          <h3 id="overall-severity">-</h3>
+        </div>
+      </div>
+
+      <table id="results-table" class="results-table hidden">
+        <tr><th>Category</th><th>Issues</th><th>Severity</th></tr>
+        <tr><td>Open Port & Services</td><td>2</td><td><span class="dot medium"></span> Medium</td></tr>
+        <tr><td>Insecure HTTP Headers</td><td>2</td><td><span class="dot low"></span> Low</td></tr>
+        <tr><td>SSL/TLS Misconfigurations</td><td>1</td><td><span class="dot high"></span> High</td></tr>
+        <tr><td>CVE Matches</td><td>1</td><td><span class="dot high"></span> High</td></tr>
+      </table>
+
+      <p id="no-result" class="no-result">No scanning result to display.</p>
+
+      <div class="buttons">
+        <button class="btn start">View Detail</button>
+        <button class="btn start">PDF Report</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
