@@ -1,0 +1,45 @@
+full scan 
+post 
+http://localhost:5000/api/scan
+content-type : application/json
+{"target":"example.com","mode":"full"}
+
+quick scan 
+post 
+http://localhost:5000/api/scan
+content-type : application/json
+{"target":"example.com","mode":"quick"}
+
+custom scan 
+post 
+http://localhost:5000/api/scan
+content-type : application/json
+{
+    "target": "example.com",
+    "mode": "custom",
+    "authorized": true,
+    "modules": {
+        "port_scan": true,
+        "service_scan": true,
+        "http_headers": true,
+        "ssl_scan": true,
+        "cve_check": false,
+        "dns_whois": true
+    },
+    "advanced": {
+        "port_ranges": ["80", "443", "8000-9000"],
+        "protocol": "tcp",
+        "timeout": 5
+    }
+}
+
+
+
+check scan status 
+get 
+http://localhost:5000/api/scan/status/{scan_id}
+
+
+view scan report 
+get
+http://localhost:5000/api/scan/{scan_id}/report
