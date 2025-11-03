@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VASA Connection Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #26366c 0%, #1a2747 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .info-box {
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+
+    .info-box h3 {
+      color: #26366c;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+
+    .info-box p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .info-box code {
+      background: #e9ecef;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+      color: #d63384;
+    }
+
+    .origin-info {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+
+    .origin-info.file-protocol {
+      background: #f8d7da;
+      border-left-color: #dc3545;
+    }
+
+    .origin-info strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #856404;
+    }
+
+    .origin-info.file-protocol strong {
+      color: #721c24;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 30px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px 28px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .results-container {
+      margin-top: 20px;
+    }
+
+    .test-result {
+      background: white;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 15px;
+      transition: all 0.3s ease;
+    }
+
+    .test-result:hover {
+      box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    }
+
+    .test-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .status-icon {
+      font-size: 24px;
+      min-width: 30px;
+    }
+
+    .test-title {
+      flex: 1;
+      font-size: 18px;
+      font-weight: 600;
+      color: #26366c;
+    }
+
+    .timestamp {
+      font-size: 12px;
+      color: #6c757d;
+    }
+
+    .test-message {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .test-message.success {
+      background: #d1e7dd;
+      color: #0f5132;
+      border-left: 4px solid #198754;
+    }
+
+    .test-message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border-left: 4px solid #dc3545;
+    }
+
+    .test-message.pending {
+      background: #cff4fc;
+      color: #055160;
+      border-left: 4px solid #0dcaf0;
+    }
+
+    .test-message.warning {
+      background: #fff3cd;
+      color: #856404;
+      border-left: 4px solid #ffc107;
+    }
+
+    .response-data {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 6px;
+      padding: 15px;
+      margin-top: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .response-data pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .error-details {
+      margin-top: 10px;
+      padding: 12px;
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      border-radius: 4px;
+    }
+
+    .error-details h4 {
+      color: #856404;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .error-details ul {
+      margin-left: 20px;
+      color: #664d03;
+    }
+
+    .error-details li {
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #6c757d;
+    }
+
+    .empty-state svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+
+    .badge-success {
+      background: #d1e7dd;
+      color: #0f5132;
+    }
+
+    .badge-danger {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .badge-warning {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .footer {
+      background: #f8f9fa;
+      padding: 20px 30px;
+      text-align: center;
+      font-size: 13px;
+      color: #6c757d;
+      border-top: 1px solid #dee2e6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔍 VASA Connection Test</h1>
+      <p>Verify Backend Connectivity & CORS Configuration</p>
+    </div>
+
+    <div class="content">
+      <!-- Info Box -->
+      <div class="info-box">
+        <h3>📋 Test Information</h3>
+        <p>This diagnostic tool tests the connection between your frontend and backend without modifying any code.</p>
+        <p><strong>Backend URL:</strong> <code>http://localhost:5000</code></p>
+        <p><strong>Expected Frontend:</strong> <code>http://localhost:8000</code> (or any port via http.server)</p>
+      </div>
+
+      <!-- Origin Info -->
+      <div id="origin-info" class="origin-info"></div>
+
+      <!-- Action Buttons -->
+      <div class="button-group">
+        <button id="test-btn" class="btn btn-primary" onclick="runAllTests()">
+          🧪 Test Connection
+        </button>
+        <button id="clear-btn" class="btn btn-secondary" onclick="clearResults()">
+          🗑️ Clear Results
+        </button>
+      </div>
+
+      <!-- Results Container -->
+      <div class="results-container">
+        <div id="results">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3L22 4"></path>
+              <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+            </svg>
+            <p>Click "Test Connection" to start diagnostics</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      ⚙️ Diagnostic Tool v1.0 | VASA Project | Do not modify backend during tests
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const BACKEND_URL = 'http://localhost:5000';
+    const HEALTH_ENDPOINT = `${BACKEND_URL}/health`;
+    const API_ENDPOINT = `${BACKEND_URL}/api/scans/recent`;
+
+    // State
+    let testResults = [];
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      displayOriginInfo();
+    });
+
+    // Display origin information
+    function displayOriginInfo() {
+      const origin = window.location.origin;
+      const protocol = window.location.protocol;
+      const host = window.location.host;
+      const isFile = protocol === 'file:';
+
+      const infoDiv = document.getElementById('origin-info');
+      
+      let html = `<strong>Current Frontend Origin:</strong> ${origin}`;
+      html += `<br>Protocol: ${protocol} | Host: ${host || 'N/A'}`;
+
+      if (isFile) {
+        infoDiv.className = 'origin-info file-protocol';
+        html += '<br><br>⚠️ <strong>Warning:</strong> You are using file:// protocol. CORS will not work properly. Please serve via HTTP server (e.g., <code>python -m http.server 8000</code>)';
+      }
+
+      infoDiv.innerHTML = html;
+    }
+
+    // Run all tests
+    async function runAllTests() {
+      const btn = document.getElementById('test-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="loading"></span>Running Tests...';
+
+      // Clear previous results
+      testResults = [];
+      updateResultsDisplay();
+
+      // Run tests sequentially
+      await test1_backendReachability();
+      await test2_corsConfiguration();
+      await test3_originValidation();
+
+      btn.disabled = false;
+      btn.innerHTML = '🧪 Test Connection';
+    }
+
+    // Test 1: Backend Reachability
+    async function test1_backendReachability() {
+      const testId = 'test1';
+      const testName = 'Test 1: Backend Reachability';
+
+      addTestResult(testId, testName, 'pending', '⏳ Testing if backend is running...', null);
+
+      try {
+        const startTime = Date.now();
+        const response = await fetch(HEALTH_ENDPOINT, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        const duration = Date.now() - startTime;
+        const data = await response.json();
+
+        if (response.ok) {
+          updateTestResult(testId, 'success', 
+            `✅ Backend is running and reachable (${duration}ms)`, 
+            data
+          );
+        } else {
+          updateTestResult(testId, 'error', 
+            `❌ Backend responded with error: ${response.status} ${response.statusText}`, 
+            data
+          );
+        }
+      } catch (error) {
+        updateTestResult(testId, 'error', 
+          `❌ Backend not running or unreachable`,
+          {
+            error: error.message,
+            type: error.name,
+            details: 'Make sure backend is running on http://localhost:5000'
+          }
+        );
+      }
+    }
+
+    // Test 2: CORS Configuration
+    async function test2_corsConfiguration() {
+      const testId = 'test2';
+      const testName = 'Test 2: CORS Configuration';
+
+      addTestResult(testId, testName, 'pending', '⏳ Testing CORS configuration...', null);
+
+      try {
+        const response = await fetch(API_ENDPOINT, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Check CORS headers
+          const corsOrigin = response.headers.get('Access-Control-Allow-Origin');
+          const corsCredentials = response.headers.get('Access-Control-Allow-Credentials');
+          
+          updateTestResult(testId, 'success', 
+            `✅ CORS is properly configured. Cross-origin requests allowed.`,
+            {
+              status: response.status,
+              statusText: response.statusText,
+              corsHeaders: {
+                'Access-Control-Allow-Origin': corsOrigin || 'Not set',
+                'Access-Control-Allow-Credentials': corsCredentials || 'Not set'
+              },
+              responseData: data
+            }
+          );
+        } else {
+          updateTestResult(testId, 'error', 
+            `❌ API request failed: ${response.status} ${response.statusText}`,
+            data
+          );
+        }
+      } catch (error) {
+        // Check if it's a CORS error
+        if (error.message.includes('CORS') || error.name === 'TypeError') {
+          updateTestResult(testId, 'error', 
+            `❌ CORS issue detected. Backend configuration may need updating.`,
+            {
+              error: error.message,
+              type: error.name,
+              reportToBackendTeam: {
+                issue: 'CORS policy blocking requests',
+                currentOrigin: window.location.origin,
+                requiredBackendChanges: [
+                  `Add '${window.location.origin}' to ALLOWED_ORIGINS in backend/app/config.py`,
+                  'Ensure flask-cors is properly configured',
+                  'Verify CORS middleware is initialized before routes'
+                ]
+              }
+            }
+          );
+        } else {
+          updateTestResult(testId, 'error', 
+            `❌ Request failed: ${error.message}`,
+            { error: error.message, type: error.name }
+          );
+        }
+      }
+    }
+
+    // Test 3: Origin Validation
+    async function test3_originValidation() {
+      const testId = 'test3';
+      const testName = 'Test 3: Origin Information';
+
+      const origin = window.location.origin;
+      const protocol = window.location.protocol;
+      const isFile = protocol === 'file:';
+      const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+      const isHTTP = protocol === 'http:' || protocol === 'https:';
+
+      let status = 'success';
+      let message = '✅ Origin configuration is valid';
+      let issues = [];
+
+      if (isFile) {
+        status = 'error';
+        message = '❌ Using file:// protocol - CORS will not work';
+        issues.push('Serve frontend via HTTP server (python -m http.server 8000)');
+      } else if (!isHTTP) {
+        status = 'warning';
+        message = '⚠️ Unusual protocol detected';
+        issues.push(`Protocol '${protocol}' may cause issues`);
+      } else if (!isLocalhost) {
+        status = 'warning';
+        message = '⚠️ Not running on localhost';
+        issues.push('Backend may not allow this origin');
+      }
+
+      addTestResult(testId, testName, status, message, {
+        origin: origin,
+        protocol: protocol,
+        host: window.location.host,
+        pathname: window.location.pathname,
+        isFile: isFile,
+        isLocalhost: isLocalhost,
+        isHTTP: isHTTP,
+        issues: issues.length > 0 ? issues : ['No issues detected']
+      });
+    }
+
+    // Helper: Add test result
+    function addTestResult(id, name, status, message, data) {
+      testResults.push({
+        id,
+        name,
+        status,
+        message,
+        data,
+        timestamp: new Date().toLocaleTimeString()
+      });
+      updateResultsDisplay();
+    }
+
+    // Helper: Update existing test result
+    function updateTestResult(id, status, message, data) {
+      const test = testResults.find(t => t.id === id);
+      if (test) {
+        test.status = status;
+        test.message = message;
+        test.data = data;
+        test.timestamp = new Date().toLocaleTimeString();
+      }
+      updateResultsDisplay();
+    }
+
+    // Update results display
+    function updateResultsDisplay() {
+      const resultsDiv = document.getElementById('results');
+
+      if (testResults.length === 0) {
+        resultsDiv.innerHTML = `
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3L22 4"></path>
+              <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+            </svg>
+            <p>Click "Test Connection" to start diagnostics</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+
+      testResults.forEach(test => {
+        const icon = getStatusIcon(test.status);
+        const badge = getStatusBadge(test.status);
+        const messageClass = test.status;
+
+        html += `
+          <div class="test-result">
+            <div class="test-header">
+              <span class="status-icon">${icon}</span>
+              <span class="test-title">${test.name}</span>
+              ${badge}
+              <span class="timestamp">${test.timestamp}</span>
+            </div>
+            <div class="test-message ${messageClass}">
+              ${test.message}
+            </div>
+        `;
+
+        // Show backend report if CORS error
+        if (test.data && test.data.reportToBackendTeam) {
+          html += `
+            <div class="error-details">
+              <h4>📋 Report to Backend Team:</h4>
+              <ul>
+                ${test.data.reportToBackendTeam.requiredBackendChanges.map(change => 
+                  `<li>${change}</li>`
+                ).join('')}
+              </ul>
+            </div>
+          `;
+        }
+
+        // Show response data
+        if (test.data) {
+          html += `
+            <div class="response-data">
+              <strong>Response Data:</strong>
+              <pre>${JSON.stringify(test.data, null, 2)}</pre>
+            </div>
+          `;
+        }
+
+        html += `</div>`;
+      });
+
+      resultsDiv.innerHTML = html;
+    }
+
+    // Get status icon
+    function getStatusIcon(status) {
+      const icons = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        pending: '⏳'
+      };
+      return icons[status] || '❓';
+    }
+
+    // Get status badge
+    function getStatusBadge(status) {
+      const badges = {
+        success: '<span class="badge badge-success">PASS</span>',
+        error: '<span class="badge badge-danger">FAIL</span>',
+        warning: '<span class="badge badge-warning">WARNING</span>',
+        pending: '<span class="badge badge-warning">TESTING</span>'
+      };
+      return badges[status] || '';
+    }
+
+    // Clear results
+    function clearResults() {
+      testResults = [];
+      updateResultsDisplay();
+    }
+  </script>
+</body>
+</html>
