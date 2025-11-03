@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flask Response Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #26366c 0%, #1a2747 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .test-section {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .test-section h3 {
+      color: #26366c;
+      margin-bottom: 15px;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .result-box {
+      margin-top: 10px;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+
+    .result-pending {
+      background: #cff4fc;
+      border-left: 4px solid #0dcaf0;
+    }
+
+    .result-success {
+      background: #d1e7dd;
+      border-left: 4px solid #198754;
+    }
+
+    .result-error {
+      background: #f8d7da;
+      border-left: 4px solid #dc3545;
+    }
+
+    .timer {
+      display: inline-block;
+      padding: 4px 8px;
+      background: #fff3cd;
+      border-radius: 4px;
+      margin-left: 10px;
+      font-weight: bold;
+    }
+
+    .analysis {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 6px;
+    }
+
+    .analysis h3 {
+      color: #856404;
+      margin-bottom: 10px;
+    }
+
+    .analysis ul {
+      margin-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔬 Flask Response Blocking Test</h1>
+      <p>Systematic diagnosis of response timing issues</p>
+    </div>
+
+    <div class="content">
+      <!-- Test 1: Immediate Response -->
+      <div class="test-section">
+        <h3>Test 1: Immediate Response (No Processing)</h3>
+        <p>Tests basic Flask response without any delays</p>
+        <div class="button-row">
+          <button class="btn btn-primary" onclick="testImmediate()">🧪 Run Test</button>
+          <button class="btn btn-secondary" onclick="clearResult('result1')">Clear</button>
+        </div>
+        <div id="result1"></div>
+      </div>
+
+      <!-- Test 2: Delayed Response -->
+      <div class="test-section">
+        <h3>Test 2: Delayed Response (2 second processing)</h3>
+        <p>Tests if processing time affects response delivery</p>
+        <div class="button-row">
+          <button class="btn btn-primary" onclick="testDelayed()">🧪 Run Test</button>
+          <button class="btn btn-secondary" onclick="clearResult('result2')">Clear</button>
+        </div>
+        <div id="result2"></div>
+      </div>
+
+      <!-- Test 3: Explicit Flush -->
+      <div class="test-section">
+        <h3>Test 3: Explicit Flush</h3>
+        <p>Tests if explicit stdout flush helps</p>
+        <div class="button-row">
+          <button class="btn btn-primary" onclick="testExplicitFlush()">🧪 Run Test</button>
+          <button class="btn btn-secondary" onclick="clearResult('result3')">Clear</button>
+        </div>
+        <div id="result3"></div>
+      </div>
+
+      <!-- Test 4: Chunked Encoding -->
+      <div class="test-section">
+        <h3>Test 4: Chunked Response</h3>
+        <p>Tests alternative response method</p>
+        <div class="button-row">
+          <button class="btn btn-primary" onclick="testChunked()">🧪 Run Test</button>
+          <button class="btn btn-secondary" onclick="clearResult('result4')">Clear</button>
+        </div>
+        <div id="result4"></div>
+      </div>
+
+      <!-- Test 5: Real Backend Health -->
+      <div class="test-section">
+        <h3>Test 5: Real Backend /health</h3>
+        <p>Tests actual backend endpoint (port 5000)</p>
+        <div class="button-row">
+          <button class="btn btn-primary" onclick="testRealBackend()">🧪 Run Test</button>
+          <button class="btn btn-secondary" onclick="clearResult('result5')">Clear</button>
+        </div>
+        <div id="result5"></div>
+      </div>
+
+      <!-- Analysis -->
+      <div class="analysis">
+        <h3>🔍 How to Interpret Results</h3>
+        <ul>
+          <li><strong>All tests instant:</strong> Issue is in main backend code</li>
+          <li><strong>Only delayed test hangs:</strong> Processing time causes buffering</li>
+          <li><strong>All tests hang:</strong> Flask development server issue</li>
+          <li><strong>Chunked works:</strong> Response buffering problem</li>
+          <li><strong>Real backend hangs:</strong> Application-specific issue</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TEST_SERVER = 'http://localhost:5001';
+    const REAL_BACKEND = 'http://localhost:5000';
+
+    function showPending(resultId, message) {
+      const elem = document.getElementById(resultId);
+      elem.className = 'result-box result-pending';
+      elem.textContent = message;
+    }
+
+    function showSuccess(resultId, message, data) {
+      const elem = document.getElementById(resultId);
+      elem.className = 'result-box result-success';
+      elem.textContent = `✅ ${message}\n\nResponse:\n${JSON.stringify(data, null, 2)}`;
+    }
+
+    function showError(resultId, message, error) {
+      const elem = document.getElementById(resultId);
+      elem.className = 'result-box result-error';
+      elem.textContent = `❌ ${message}\n\nError: ${error}`;
+    }
+
+    function clearResult(resultId) {
+      document.getElementById(resultId).innerHTML = '';
+    }
+
+    async function testEndpoint(url, resultId, testName) {
+      const startTime = Date.now();
+      let intervalId;
+      
+      showPending(resultId, `⏳ ${testName} - Waiting for response...\n\nTime elapsed: 0ms`);
+      
+      intervalId = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        showPending(resultId, `⏳ ${testName} - Waiting for response...\n\nTime elapsed: ${elapsed}ms`);
+      }, 100);
+
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        clearInterval(intervalId);
+        const duration = Date.now() - startTime;
+        const data = await response.json();
+        
+        showSuccess(resultId, `Test completed in ${duration}ms`, data);
+      } catch (error) {
+        clearInterval(intervalId);
+        const duration = Date.now() - startTime;
+        showError(resultId, `Test failed after ${duration}ms`, error.message);
+      }
+    }
+
+    async function testImmediate() {
+      await testEndpoint(`${TEST_SERVER}/test/immediate`, 'result1', 'Immediate Response Test');
+    }
+
+    async function testDelayed() {
+      await testEndpoint(`${TEST_SERVER}/test/delayed`, 'result2', 'Delayed Response Test');
+    }
+
+    async function testExplicitFlush() {
+      await testEndpoint(`${TEST_SERVER}/test/explicit-flush`, 'result3', 'Explicit Flush Test');
+    }
+
+    async function testChunked() {
+      await testEndpoint(`${TEST_SERVER}/test/chunked`, 'result4', 'Chunked Response Test');
+    }
+
+    async function testRealBackend() {
+      await testEndpoint(`${REAL_BACKEND}/health`, 'result5', 'Real Backend Test');
+    }
+  </script>
+</body>
+</html>

@@ -36,5 +36,8 @@ if __name__ == '__main__':
         port=port,
         application=app,
         use_reloader=False,
-        use_debugger=False
+        use_debugger=False,
+        threaded=True,        # Enable multi-threading to prevent response blocking
+        processes=1,          # Single process
+        use_evalex=False      # Disable interactive debugger
     )
