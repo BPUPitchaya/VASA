@@ -9,6 +9,7 @@ from io import BytesIO
 
 from ..scanners.scan_config import ScanConfig, ScanMode
 from ..scanners.scan_manager import ScanManager
+from ..scanners.headers_scanner import HeadersScanner
 from ..middleware.rate_limiter import rate_limit
 from ..middleware.safety_checks import safety_checker
 from ..db import save_scan, update_scan_status, get_scan, get_recent_scans as db_get_recent_scans
