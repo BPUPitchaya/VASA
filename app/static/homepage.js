@@ -129,6 +129,10 @@ function startPolling(id, { resume = false } = {}) {
   }, 1500); 
 }
 
+function lockResultsMetaLayout() {
+  const el = document.querySelector('.right-panel .overview');
+}
+
 // to load results summary once scan is done
 async function loadResults(id, statusDoc) {
   try {

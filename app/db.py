@@ -81,29 +81,71 @@ def save_scan(scan_id: str, target: str, scan_type: str, authorized: bool, clien
         )
         conn.commit()
 
-def update_scan_status(scan_id: str, status: str, results: Dict[str, Any] = None):
-    """Update scan status and optionally store results."""
+def update_scan_status(scan_id: str, status: str, results: Dict[str, Any] = None, **extra_fields):
+    """
+    Update scan status and merge results JSON safely.
+    - Keeps existing results keys (no overwrite).
+    - Allows progress via extra_fields['progress'] -> results['progress'].
+    - Sets started_at when first seen 'running'.
+    - Sets completed_at for terminal states.
+    """
     with get_connection() as conn:
-        if status == 'running':
-            conn.execute(
-                'UPDATE scans SET status = ?, started_at = ? WHERE id = ?',
-                (status, datetime.utcnow(), scan_id)
-            )
-        elif status in ['completed', 'failed']:
-            conn.execute(
-                '''
-                UPDATE scans 
-                SET status = ?, completed_at = ?, results = ?
-                WHERE id = ?
-                ''',
-                (status, datetime.utcnow(), json.dumps(results) if results else None, scan_id)
-            )
-        else:
-            conn.execute(
-                'UPDATE scans SET status = ? WHERE id = ?',
-                (status, scan_id)
-            )
+        # Fetch current row to merge results
+        row = conn.execute('SELECT status, started_at, results FROM scans WHERE id = ?', (scan_id,)).fetchone()
+        if not row:
+            return False
+
+        current_status = row['status']
+        started_at = row['started_at']
+        existing_results = {}
+        if row['results']:
+            try:
+                existing_results = json.loads(row['results'])
+                if not isinstance(existing_results, dict):
+                    existing_results = {}
+            except Exception:
+                existing_results = {}
+
+        # Merge new results (if provided)
+        if results and isinstance(results, dict):
+            existing_results.update(results)
+
+        # Progress as top-level arg -> store inside results JSON
+        if 'progress' in extra_fields:
+            try:
+                p = int(extra_fields['progress'])
+            except Exception:
+                p = 0
+            existing_results['progress'] = max(0, min(100, p))
+
+        # Build column updates
+        params = {}
+        sets = []
+
+        # status always updated
+        params['status'] = status
+        sets.append('status = :status')
+
+        # started_at: set only once, when we first enter running
+        if status == 'running' and not started_at:
+            params['started_at'] = datetime.utcnow()
+            sets.append('started_at = :started_at')
+
+        # completed_at on terminal
+        if status in ('completed', 'failed'):
+            params['completed_at'] = datetime.utcnow()
+            sets.append('completed_at = :completed_at')
+
+        # results JSON (only if we have something to store)
+        params['results'] = json.dumps(existing_results) if existing_results else None
+        sets.append('results = :results')
+
+        params['id'] = scan_id
+
+        sql = f"UPDATE scans SET {', '.join(sets)} WHERE id = :id"
+        conn.execute(sql, params)
         conn.commit()
+        return True
 
 def get_scan(scan_id: str) -> Optional[Dict[str, Any]]:
     """Get scan details by ID."""

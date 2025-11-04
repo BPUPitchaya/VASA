@@ -7,6 +7,8 @@ import time
 import os
 from io import BytesIO
 
+import threading
+
 from ..scanners.scan_config import ScanConfig, ScanMode
 from ..scanners.scan_manager import ScanManager
 from ..middleware.rate_limiter import rate_limit
@@ -25,7 +27,7 @@ bp = Blueprint('api', __name__, url_prefix='/api')
 def _set_progress(scan_id: str, pct: int, note: str = "") -> None:
     """Update only the progress/message while status stays 'running'."""
     update_scan_status(scan_id, 'running', {
-        'progress': int(max(0, min(99, round(pct)))),  # clamp 0..99 while running
+        'progress': int(max(0, min(99, pct))),  # clamp 0..99 while running
         'message': note
     })
 
@@ -37,29 +39,24 @@ def get_client_ip() -> str:
 
 @bp.route('/scan/status/<scan_id>', methods=['GET'])
 @rate_limit(max_requests=60, window=60)  # 60 requests per minute for status checks
+
+
 def get_scan_status(scan_id: str):
-    """
-    Get the status of a scan.
-    
-    Response:
-    {
-        "id": "uuid",
-        "target": "example.com",
-        "status": "queued" | "running" | "completed" | "failed",
-        "scan_type": "quick" | "standard" | "full" | "custom",
-        "created_at": "2023-01-01T12:00:00Z",
-        "started_at": "2023-01-01T12:00:05Z",
-        "completed_at": "2023-01-01T12:00:30Z",
-        "results": { ... }  # When status is completed
-    }
-    """
     scan = get_scan(scan_id)
     if not scan:
-        return jsonify({
-            'status': 'error',
-            'message': 'Scan not found'
-        }), 404
-        
+        return jsonify({'status': 'error', 'message': 'Scan not found'}), 404
+
+    # Ensure top-level progress exists and is an int
+    prog = 0
+    try:
+        if 'progress' in scan and scan['progress'] is not None:
+            prog = int(scan['progress'])
+        elif isinstance(scan.get('results'), dict) and 'progress' in scan['results']:
+            prog = int(scan['results']['progress'])
+    except Exception:
+        prog = 0
+    scan['progress'] = max(0, min(100, prog))
+
     return jsonify(scan)
 
 @bp.route('/scan/<scan_id>/report', methods=['GET'])
@@ -165,73 +162,33 @@ def list_recent_scans():
 
 @bp.route('/scan', methods=['POST'])
 @rate_limit(max_requests=30, window=60)  # 30 requests per minute for new scans
-async def scan():
-    """
-    Unified scan endpoint that handles all scan types based on configuration.
-    
-    Request JSON:
-    {
-        "target": "example.com",  # Required
-        "mode": "quick" | "standard" | "full" | "custom",  # Optional, default: quick
-        "authorized": false,  # Required for standard/full scans
-        "modules": {
-            "port_scan": true,
-            "service_scan": true,
-            "http_headers": true,
-            "ssl_scan": true,
-            "cve_check": false,
-            "dns_whois": true,
-            "save_to_history": true
-            "key_bits": 2048,
-            "key_type": "RSA"
-        },
-        "protocols": ["TLSv1.2", "TLSv1.3"],
-        "ciphers": [
-            {
-                "name": "TLS_AES_256_GCM_SHA384",
-                "protocol": "TLSv1.3",
-                "strength": 256,
-                "secure": true
-            },
-            ...
-        ],
-        "vulnerabilities": [
-            {
-                "id": "heartbleed",
-                "severity": "critical",
-                "description": "Vulnerable to Heartbleed (CVE-2014-0160)",
-                "remediation": "Upgrade OpenSSL to version 1.0.1g or later",
-                "cve": "CVE-2014-0160"
-            }
-        ]
-    }
-    """
+def scan():
     data = request.get_json() or {}
     target = data.get('target')
-    port = data.get('port', 443)
-    timeout = data.get('timeout', 10)
-    
     if not target:
-        return jsonify({
-            'status': 'error',
-            'message': 'Target is required'
-        }), 400
-    
-    # Create config with proper parameter order and module overrides
+        return jsonify({'status': 'error', 'message': 'Target is required'}), 400
+
+    # Validate mode
+    try:
+        mode = ScanMode(data.get('mode', 'quick'))
+    except ValueError:
+        return jsonify({'status': 'error', 'message': 'Invalid mode'}), 400
+
     config = ScanConfig(
         target=target,
-        mode=ScanMode(data.get('mode', 'quick')),
+        mode=mode,
         authorized=data.get('authorized', False)
     )
-    
-    # Apply any module overrides from the request
+
+    # Optional module overrides
     if 'modules' in data and isinstance(data['modules'], dict):
-        for key, value in data['modules'].items():
-            if hasattr(config.modules, key):
-                setattr(config.modules, key, value)
+        for k, v in data['modules'].items():
+            if hasattr(config.modules, k):
+                setattr(config.modules, k, v)
+
     client_ip = get_client_ip()
-    
-    # Generate scan ID and save to database
+
+    # Create record
     scan_id = str(uuid.uuid4())
     save_scan(
         scan_id=scan_id,
@@ -240,45 +197,40 @@ async def scan():
         authorized=config.authorized,
         client_ip=client_ip
     )
-    
+
     safety_checker.start_scan(client_ip)
 
-    def set_progress(pct:int):
-        update_scan_status(scan_id,'running',{'progress':int(pct)})
-    
-    # Start the scan in the background
-    async def run_scan_async():
+    def set_progress(pct: int, msg: str = ""):
+        # Store progress at the TOP LEVEL so the frontend sees it
+        update_scan_status(scan_id, 'running', None, progress=int(max(0, min(99, pct))))
+
+    def worker():
         try:
-            # Update status to running
-            update_scan_status(scan_id, 'running')
-            _set_progress(scan_id,5, "Starting scan")
-            
-            # Run the scan
+            update_scan_status(scan_id, 'running', None, progress=0)
+            set_progress(5, "Starting")
             manager = ScanManager(config)
 
-            results = await manager.run_scan()
-            _set_progress(scan_id,95, "Finalising results")
-            
-            # Save successful results
-            update_scan_status(scan_id, 'completed', results)
-            return results
-            
+            # Optional checkpoints before the heavy call
+            set_progress(30, "Ports")
+            set_progress(55, "HTTP")
+            set_progress(75, "TLS/SSL")
+            set_progress(90, "CVE")
+
+            # Run the async pipeline in this thread
+            results = asyncio.run(manager.run_scan())
+
+            # Finalize
+            update_scan_status(scan_id, 'completed', results, progress=100)
+
         except Exception as e:
             logger.exception("Scan failed")
-            update_scan_status(scan_id, 'failed', {'error': str(e)})
-            return {
-                'status': 'failed',
-                'error': str(e)
-            }
+            update_scan_status(scan_id, 'failed', {'error': str(e)}, progress=0)
         finally:
             safety_checker.end_scan(client_ip)
-            
-    asyncio.create_task(run_scan_async())
-    
-    return jsonify({
-        'status': 'success',
-        'scan_id': scan_id
-    })
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    return jsonify({'status': 'success', 'scan_id': scan_id})
 
 @bp.route('/scan/headers', methods=['POST'])
 def headers_scan():
