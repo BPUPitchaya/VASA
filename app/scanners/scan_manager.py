@@ -36,6 +36,21 @@ class ScanManager:
             'modules': {}
         }
         self._rate_limit_semaphore = asyncio.Semaphore(config.advanced.max_threads)
+        self.cancel_event = asyncio.Event()
+        self.pause_event = asyncio.Event()
+        self.pause_event.set()  # Start in running state (not paused)
+        self.pause_requested = False
+    
+    def request_cancel(self):
+        self.cancel_event.set()
+
+    def request_pause(self):
+        self.pause_requested = True
+        self.pause_event.clear()
+
+    def request_resume(self):
+        self.pause_requested = False
+        self.pause_event.set()
         
     async def run_scan(self) -> Dict[str, Any]:
         """
@@ -50,24 +65,26 @@ class ScanManager:
             # Run enabled modules concurrently
             tasks = []
             
-            if self.config.modules.port_scan:
+            if self.config.mode == ScanMode.QUICK:
+                self.config.modules.port_scan = False
+
+            if self.config.modules.port_scan and self.config.authorized:
                 tasks.append(self._run_port_scan())
-                
+
             if self.config.modules.http_headers:
                 tasks.append(self._run_headers_scan())
-                
+
             if self.config.modules.ssl_scan:
                 tasks.append(self._run_ssl_scan())
-                
+
             if self.config.modules.cve_check:
                 tasks.append(self._run_cve_check())
-                
+
             if self.config.modules.dns_whois:
                 tasks.append(self._run_dns_whois())
             
             # Wait for all tasks to complete
             await asyncio.gather(*tasks, return_exceptions=True)
-            
             self.results['status'] = 'completed'
             
         except Exception as e:
@@ -82,46 +99,117 @@ class ScanManager:
         return self.results
     
     async def _run_port_scan(self) -> None:
-        """Run port scanning if enabled in config."""
+        """Run port scanning if enabled in config (quick for STANDARD/CUSTOM, full for FULL)."""
         if not self.config.modules.port_scan:
             return
-            
+
+        # If you also want to hard-gate active scans by authorization:
+        if not self.config.authorized and self.config.mode in (ScanMode.STANDARD, ScanMode.FULL):
+            logger.info("Active port scan skipped (not authorized).")
+            return
+
         try:
-            self.results['modules']['port_scan'] = {
+            self.results['modules'].setdefault('port_scan', {})
+            self.results['modules']['port_scan'].update({
                 'status': 'running',
-                'start_time': time.time()
-            }
-            
-            # Convert port ranges to flat list of ports
-            ports = []
-            for port_range in self.config.advanced.port_ranges:
-                for part in port_range.split(','):
-                    if '-' in part:
-                        start, end = map(int, part.split('-'))
-                        ports.extend(range(start, end + 1))
+                'start_time': time.time(),
+                'progress': 0
+            })
+
+            # ---- Build ports string from advanced.port_ranges (NO hidden 1–65535) ----
+            try:
+                ranges = getattr(self.config.advanced, "port_ranges", None) or []
+                ports_str = ",".join(ranges) if ranges else None
+            except Exception:
+                ports_str = None
+            if not ports_str:
+                # conservative, quick default to avoid accidental 65k scans
+                ports_str = "21-23,80,443,8080,8443"
+
+            # ---- Concurrency ----
+            max_workers = getattr(getattr(self.config, "advanced", None), "max_threads", 256)
+
+            # ---- Progress callback (logs every completion) ----
+            def cb(scanned: int, total: int, port: int | None, status: str | None) -> None:
+                try:
+                    if port is None:
+                        logger.info("[port-scan] 0/%s starting …", total)
                     else:
-                        ports.append(int(part))
+                        logger.info("[port-scan] %s/%s port %s -> %s", scanned, total, port, status)
+                    pct = int(scanned * 100 / max(total, 1))
+                    self.results['modules']['port_scan']['progress'] = min(99, max(0, pct))
+                    # keep a coarse top-level hint; other modules can push it up
+                    self.results['progress'] = max(self.results.get('progress', 0), min(99, max(0, pct)))
+                except Exception:
+                    pass
+
+            # ---- Choose scanner by mode ----
+            from .port_scanner import scan_ports, scan_ports_full
+            is_full = (self.config.mode == ScanMode.FULL)
+            scanner = scan_ports_full if is_full else scan_ports
             
-            # Run the scan
-            open_ports = await scan_ports(
+            # Pass the pause token to the scanner
+            scan_doc = await asyncio.to_thread(
+                scanner,
                 self.config.target,
-                ports=ports,
-                timeout=self.config.advanced.timeout,
-                max_concurrent=self.config.advanced.max_threads
+                ports=ports_str,
+                max_workers=max_workers,
+                progress_cb=cb,
+                cancel_token=self.cancel_event,
+                pause_token=self.pause_event
             )
             
+            # Update results with scan data
+            if scan_doc and 'open_ports' in scan_doc:
+                self.results['modules']['port_scan'].update({
+                    'end_time': time.time(),
+                    'status': 'completed' if scan_doc.get('status') != 'stopped' else 'stopped',
+                    'open_ports': scan_doc.get('open_ports', []),
+                    'total_ports_scanned': scan_doc.get('total_ports_scanned', 0),
+                    'scan_details': {
+                        'host_status': scan_doc.get('host_status', 'unknown'),
+                        'elapsed': scan_doc.get('duration_seconds', 0)
+                    }
+                })
+                
+                # Update the main results with open ports
+                if 'open_ports' not in self.results:
+                    self.results['open_ports'] = []
+                self.results['open_ports'].extend(scan_doc.get('open_ports', []))
+
+            # Ensure pause tokens exist if you plan to support Pause/Resume
+            # (create these in __init__: self.pause_event = asyncio.Event(); self.pause_event.set())
+            pause_token = getattr(self, "pause_event", None)
+
+            # ---- Execute port scan off the loop ----
+            scan_doc = await asyncio.to_thread(
+                scanner,
+                self.config.target,
+                ports=ports_str,
+                max_workers=max_workers,
+                progress_cb=cb,
+                cancel_token=self.cancel_event,   # supports Stop
+                pause_token=pause_token           # supports Pause/Resume (if wired in _perform_scan)
+            )
+
+            # ---- Persist results ----
             self.results['modules']['port_scan'].update({
-                'status': 'completed',
-                'end_time': time.time(),
-                'open_ports': open_ports,
-                'protocol': self.config.advanced.protocol.value
+                'status'    : 'completed',
+                'end_time'  : time.time(),
+                'open_ports': scan_doc.get('open_ports', []),
+                'scan_stats': scan_doc.get('scan_stats', {}),
+                'target_ip' : scan_doc.get('ip_address'),
+                'scan_type' : scan_doc.get('scan_type', 'tcp_connect_scan'),
+                'progress'  : 100,
             })
-            
+            # lift overall progress toward done for this module
+            self.results['progress'] = max(self.results.get('progress', 0), 100)
+
         except Exception as e:
             logger.exception("Port scan failed")
             self.results['modules']['port_scan'].update({
                 'status': 'failed',
-                'error': str(e),
+                'error' : str(e),
                 'end_time': time.time()
             })
     
@@ -255,3 +343,7 @@ class ScanManager:
                 'error': str(e),
                 'end_time': time.time()
             })
+
+#call back log for port scanned 
+def my_callback(port,status,idx,total):
+    print(f"[progress] {idx}/{total} port {port} : {status}")

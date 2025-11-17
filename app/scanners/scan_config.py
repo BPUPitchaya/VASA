@@ -9,6 +9,9 @@ class ScanMode(str, Enum):
     FULL = "full"          # Comprehensive scan (all ports, all checks)
     CUSTOM = "custom"      # User-defined configuration
 
+    ACTIVE = "full"
+    PASSIVE = "quick"
+
 class Protocol(str, Enum):
     """Network protocols supported for scanning."""
     TCP = "tcp"
@@ -69,6 +72,7 @@ class ScanConfig:
                 dns_whois=True,
                 save_to_history=True
             )
+            self.advanced.port_ranges = ["80,443"]
             self.advanced.max_threads = 10  # Be gentle
             
         elif self.mode == ScanMode.STANDARD:
@@ -170,37 +174,55 @@ class ScanConfig:
         Returns:
             Configured ScanConfig instance
         """
-        mode = ScanMode(data.get('mode', ScanMode.QUICK))
-        config = cls(
-            target=data['target'],
-            mode=mode,
-            authorized=data.get('authorized', False)
-        )
-        
-        # Override module settings if provided
-        if 'modules' in data:
-            modules = data['modules']
-            config.modules = ModuleConfig(
-                port_scan=modules.get('port_scan', False),
-                service_scan=modules.get('service_scan', False),
-                http_headers=modules.get('http_headers', False),
-                ssl_scan=modules.get('ssl_scan', False),
-                cve_check=modules.get('cve_check', False),
-                dns_whois=modules.get('dns_whois', False),
-                save_to_history=modules.get('save_to_history', True)
+        raw_mode = data.get('mode', 'quick')
+        m = str(raw_mode).strip().lower()
+        if m in ('active','full'):   mode = ScanMode.FULL
+        elif m in ('passive','quick'): mode = ScanMode.QUICK
+        elif m == 'standard':        mode = ScanMode.STANDARD
+        elif m == 'custom':          mode = ScanMode.CUSTOM
+        else:                        mode = ScanMode.QUICK
+
+        cfg = cls(target=data['target'], mode=mode, authorized=data.get('authorized', False))
+
+        # ---- modules ----
+        mods = data.get('modules')
+        if isinstance(mods, dict):
+            cfg.modules = ModuleConfig(
+                port_scan      = bool(mods.get('port_scan', False)),
+                service_scan   = bool(mods.get('service_scan', False)),
+                http_headers   = bool(mods.get('http_headers', False)),
+                ssl_scan       = bool(mods.get('ssl_scan', False)),
+                cve_check      = bool(mods.get('cve_check', False)),
+                dns_whois      = bool(mods.get('dns_whois', False)),
+                save_to_history= bool(mods.get('save_to_history', True)),
             )
-            
-        # Override advanced settings if provided
+        elif isinstance(mods, list):
+            s = set(str(x).lower() for x in mods)
+            cfg.modules = ModuleConfig(
+                port_scan      = 'port_scan' in s,
+                service_scan   = 'service_scan' in s,
+                http_headers   = 'http_headers' in s,
+                ssl_scan       = 'ssl_scan' in s,
+                cve_check      = 'cve_check' in s,
+                dns_whois      = 'dns_whois' in s,
+                save_to_history= True,
+            )
+        # else: keep __post_init__ defaults
+
+        # ---- advanced ----
         if 'advanced' in data:
             adv = data['advanced']
-            config.advanced = AdvancedConfig(
-                port_ranges=adv.get('port_ranges', ["1-1024"]),
-                protocol=Protocol(adv.get('protocol', Protocol.TCP)),
-                timeout=adv.get('timeout', 5),
-                retries=adv.get('retries', 2),
-                max_threads=adv.get('max_threads', 50),
-                output_format=OutputFormat(adv.get('output_format', OutputFormat.JSON)),
-                include_raw_logs=adv.get('include_raw_logs', False)
-            )
-            
-        return config
+            cfg.advanced.port_ranges = adv.get('port_ranges', cfg.advanced.port_ranges)
+            cfg.advanced.max_threads = adv.get('max_threads', cfg.advanced.max_threads)
+            cfg.advanced.timeout     = adv.get('timeout', cfg.advanced.timeout)
+            # ... keep your other advanced fields ...
+
+        # ---- hard constraints for QUICK (passive) ----
+        if cfg.mode == ScanMode.QUICK:
+            cfg.modules.port_scan = False
+            cfg.modules.service_scan = False
+            # keep passive-friendly ranges even if the caller tried to pass huge ones
+            cfg.advanced.port_ranges = ["80,443"]
+            cfg.authorized = False
+
+        return cfg

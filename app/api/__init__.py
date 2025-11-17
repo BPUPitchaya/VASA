@@ -1,20 +1,27 @@
-from flask import Blueprint, jsonify, request
-from ..core.scanner import Scanner
+from flask import Blueprint, jsonify, request, make_response
+import socket
+import threading
+import uuid
+import time
 
-scan_bp = Blueprint('scan', __name__)
-scanner = Scanner()
+# Create the main API blueprint
+bp = Blueprint('api', __name__)
 
-@scan_bp.route('/scan', methods=['POST'])
-def start_scan():
-    data = request.json
-    target = data.get('target')
-    
-    if not target:
-        return jsonify({'error': 'Target is required'}), 400
-    
+# In-memory storage for scan results and active scan managers
+scans = {}
+scan_lock = threading.Lock()
+
+# Registry for active scan managers (for pause/resume functionality)
+SCAN_REGISTRY = {}
+SCAN_REGISTRY_LOCK = threading.Lock()
+
+def is_valid_target(target):
+    """Validate if the target is a valid IP or domain"""
     try:
-        # Start the scan (this will be async in production)
-        results = scanner.scan(target)
-        return jsonify(results)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        socket.gethostbyname(target)
+        return True
+    except socket.gaierror:
+        return False
+
+# Import routes after creating the blueprint to avoid circular imports
+from . import endpoints

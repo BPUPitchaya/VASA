@@ -2,13 +2,16 @@ from flask import Blueprint, request, jsonify
 from ..scanners.port_scanner import scan_ports
 from ..scanners.http_scanner import HttpScanner
 from ..scanners.cve_checker import CVEChecker
+
 import json
 
 import time
 import threading
 from uuid import uuid4
+from typing import Dict
+from . import bp
 
-bp = Blueprint('api', __name__, url_prefix='/api')
+#bp = Blueprint('api', __name__, url_prefix='/api')
 
 @bp.route('/scan/ports', methods=['POST'])
 def port_scan():
@@ -119,7 +122,7 @@ def full_scan():
         return jsonify({'error': str(e)}), 500
     
 # New Async full scan endpoints
-
+"""
 _SCANS = {}
 
 def _new_id():
@@ -135,7 +138,7 @@ def _maybe_wait(scan):
 def _grade_severity(port_results, http_results, cve_results):
     sev = "Low"
     high_ports = {22, 23, 445, 3389}
-    open_ports = {s["ports"] for s in port_results.get("services", [])} if port_results else set()
+    open_ports = {s["port"] for s in port_results.get("services", [])} if port_results else set()
 
     if any (p in open_ports for p in high_ports):
         sev = "Medium"  
@@ -153,7 +156,7 @@ def _run_full_scan_async(scan_id, target, ports):
 
         #Phase 1 : port scna
         port_results = scan_ports(target, ports)
-        scan["progess"] = 35
+        scan["progress"] = 35
         _maybe_wait(scan)
 
         #Phase 2 : Http scan
@@ -162,7 +165,7 @@ def _run_full_scan_async(scan_id, target, ports):
         open_ports = {s["port"] for s in port_results.get("services", [])}
         if open_ports & http_ports:
             http_results = HttpScanner(target).scan()
-        scan["progess"] = 65
+        scan["progress"] = 65
         _maybe_wait(scan)
 
         #Phase 3: CVE Scan
@@ -270,3 +273,5 @@ def api_results(scan_id):
     if s["state"] == "failed":
         return jsonify({'error': s.get('err') or 'scan failed'}), 500
     return jsonify(s["result"] or {"issues": []})
+
+"""

@@ -292,3 +292,28 @@ class SSLScanner:
                     return False
         except Exception:
             return False
+
+
+
+def run_ssl_scan(host, port_results=None):
+    """
+    Run a single SSL scan against the best HTTPS-like port we can find.
+
+    endpoints.py calls: run_ssl_scan(target, open_ports)
+    where open_ports is a list of { "port": int, ... }.
+    """
+    # Default port
+    port = 443
+
+    # If we have open port info, prefer 443 / 8443 / 9443 when present
+    https_candidates = {443, 8443, 9443}
+    if port_results:
+        for entry in port_results:
+            p = entry.get("port")
+            if p in https_candidates:
+                port = p
+                break
+
+    scanner = SSLScanner(host=host, port=port)
+    result = scanner.scan()  # SSLScanResult
+    return result.to_dict()

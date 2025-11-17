@@ -357,3 +357,35 @@ class CVEChecker:
             
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
+
+
+
+def run_cve_check(port_results):
+    """
+    Given a list of port scan results
+    [{ "port": 443, "service": "...", "banner": "..." }, ...]
+    return CVE findings grouped per port.
+    """
+    findings = []
+
+    if not port_results:
+        return findings
+
+    for entry in port_results:
+        banner = entry.get("banner")
+        if not banner:
+            continue
+
+        # Use the class method that matches on banner + version
+        cves = CVEChecker.check_banner(banner)
+        if not cves:
+            continue
+
+        findings.append({
+            "port": entry.get("port"),
+            "service": entry.get("service"),
+            "banner": banner,
+            "cves": cves,  # list of CVE dicts
+        })
+
+    return findings
