@@ -4,7 +4,7 @@ body {
   font-family: "Open Sans", sans-serif;
   background: #f5f6fa;
   color: #000;
-  font-size: 12pt;
+  font-size: 12pt; /* to match homepage */
 }
 
 .header {
@@ -15,94 +15,94 @@ body {
 }
 
 .app-title {
-  font-size: 24px;
+  font-size: 1.8rem; 
+  font-weight: bold;
   font-weight: 700;
   margin: 0;
 }
 
 .page-wrapper {
   width: 100%;
-  padding: 30px 40px;
+  padding: 40px 50px;
   box-sizing: border-box;
 }
 
 .main-layout {
   display: grid;
-  grid-template-columns: 1.3fr 1fr; 
-  gap: 30px;
+  grid-template-columns: 1fr 1fr;
+  gap: 50px; 
 }
+
 
 .panel {
   background: #fff;
-  padding: 25px;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  padding: 35px 35px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12);
 }
 
-/* Left section title */
 .section-title {
-  margin: 0 0 10px 0;
+  margin: 0 0 20px 0;
   font-size: 22px;
   font-weight: 700;
 }
 
+/*  Meta Info  */
 .scan-meta {
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
 .meta {
-  margin-bottom: 6px;
-  font-size: 15px;
+  margin-bottom: 10px;
+  font-size: 12pt; 
 }
 
+/*  Another and Rescan Buttons  */
 .btn-small {
-  margin-top: 10px;
-  padding: 6px 12px;
+  margin-top: 12px;
+  padding: 8px 14px;
 }
 
-/* Accordion */
 .accordion {
-  margin-top: 10px;
+  margin-top: 18px;
 }
 
 .acc-btn {
   width: 100%;
-  padding: 12px 15px;
-  font-size: 15px;
+  padding: 15px 18px;
+  font-size: 12pt;
   font-weight: 600;
   text-align: left;
   background: #26366c;
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   outline: none;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.acc-btn .chev {
-  font-size: 16px;
-}
-
 .acc-panel {
-  display: none; /* JS controls visibility */
+  display: none;
   background: #fff;
   border: 1px solid #dcdcdc;
-  border-radius: 6px;
-  padding: 15px;
-  margin-top: -5px;
-  margin-bottom: 12px;
+  border-radius: 8px;
+  padding: 18px;
+  margin-top: -8px;
+  margin-bottom: 20px;
+  font-size: 12pt;
 }
 
-/* Tables*/
+/*  Tables  */
 .sub-table,
 .results-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13pt;
+  margin-top: 10px;
 }
 
 .sub-table th,
@@ -110,7 +110,7 @@ body {
 .results-table th,
 .results-table td {
   border: 1px solid #dcdcdc;
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 
 .sub-table th,
@@ -120,95 +120,82 @@ body {
   font-weight: 600;
 }
 
-.list li {
-  margin-bottom: 8px;
-}
-
-
-.kpis {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-bottom: 25px;
-}
-
-.kpi {
-  background: #d6d9e4;
-  border-radius: 12px;
-  padding: 18px 10px;
-  text-align: center;
-}
-
-.kpi-title {
-  font-size: 15px;
-  margin-bottom: 5px;
-}
-
-.kpi-value {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.sev-high { color: #cb0404; }
-.sev-medium { color: #f4cb1c; }
-.sev-low { color: #06c262; }
-
-/* Severity dot */
-.dot {
-  height: 12px;
-  width: 12px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 5px;
-}
-
-.dot.high { background: #cb0404; }
-.dot.medium { background: #f4cb1c; }
-.dot.low { background: #06c262; }
-
-/* Breakdown table card */
-.breakdown {
-  margin-top: 15px;
-}
-
-.card-title {
-  margin-bottom: 15px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-/* uttons*/
-.btn {
-  background: #26366c;
-  border: none;
-  color: #fff;
-  padding: 10px 18px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.btn:hover {
-  background: #1c2752;
-}
-
-.actions-left,
-.actions-right {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
-}
-
+/* Lists  */
 .list {
   list-style: none;
   padding-left: 0;
   margin-left: 0;
 }
 
-/*Responsive*/
+.list li {
+  margin-bottom: 10px;
+  font-size: 13pt;
+}
+
+/*  KPIs  */
+.kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px; 
+  margin-bottom: 35px;
+}
+
+.kpi {
+  background: #d6d9e4;
+  border-radius: 12px;
+  padding: 25px 20px; 
+  text-align: center;
+}
+
+.kpi-title {
+  font-size: 14pt;
+  margin-bottom: 8px;
+}
+
+.kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+/*  Severity Colors  */
+.sev-high { color: #cb0404; }
+.sev-medium { color: #f4cb1c; }
+.sev-low { color: #06c262; }
+
+/*  Breakdown  */
+.breakdown {
+  margin-top: 20px;
+}
+
+.card-title {
+  margin-bottom: 15px;
+  font-size: 18pt;
+  font-weight: 700;
+}
+
+/*  Action Buttons --- */
+.btn {
+  background: #26366c;
+  border: none;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12pt;
+  font-weight: 600;
+}
+
+.actions-left,
+.actions-right {
+  margin-top: 30px;
+  display: flex;
+  justify-content: center;
+}
+
+/*  Responsive  */
 @media (max-width: 1024px) {
   .main-layout {
     grid-template-columns: 1fr;
+    gap: 35px;
   }
 }
