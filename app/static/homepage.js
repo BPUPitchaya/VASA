@@ -105,6 +105,12 @@ function resetUI() {
   }
 }
 
+function cleanHeaderIssues(arr) {
+  return (arr || [])
+    .map(x => (typeof x === "string" ? x : (x.issue || x.header || String(x))))
+    .filter(txt => !/^failed to connect/i.test(txt));
+}
+
 function normalise(doc) {
   const modules = doc?.results?.modules || {};
 
@@ -114,7 +120,7 @@ function normalise(doc) {
 
     const hdr      = modules.http_headers?.results || {};
     const missing  = hdr.missing_headers || [];
-    const secIssues= hdr.security_issues || [];
+    const secIssues= cleanHeaderIssues(hdr.security_issues || []);
     const headerIssues = [...missing, ...secIssues];
 
     const sslRes   = modules.ssl_scan?.results || {};
