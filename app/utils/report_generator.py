@@ -50,15 +50,44 @@ def get_styles():
     _styles = styles
     return styles
 
+def format_timestamp(ts):
+    """Convert Unix timestamp or string to human-readable date."""
+    if not ts:
+        return "—"
+    try:
+        # Numeric Unix timestamp
+        if isinstance(ts, (float, int)):
+            return datetime.fromtimestamp(ts).strftime("%d %b %Y, %H:%M:%S")
+        # ISO or other strings
+        return str(ts)
+    except Exception:
+        return str(ts)
+
+
+def calculate_duration(start, end):
+    """Return duration HH:MM:SS or —"""
+    if not start or not end:
+        return "—"
+    try:
+        duration = int(end - start)
+        hours = duration // 3600
+        minutes = (duration % 3600) // 60
+        seconds = duration % 60
+        return f"{hours:02}:{minutes:02}:{seconds:02}"
+    except Exception:
+        return "—"
 
 # METADATA TABLE
 def build_metadata(scan: Dict[str, Any]):
+    start = scan.get("start_time")
+    end = scan.get("end_time")
+
     data = [
         ["Target", scan.get("target", "—")],
         ["Scan Type", scan.get("scan_type", "—").title()],
-        ["Status", scan.get("status", "—")],
-        ["Started", scan.get("start_time", "—")],
-        ["Completed", scan.get("end_time", "—")]
+        ["Scan Date", format_timestamp(start)],
+        ["Duration", calculate_duration(start, end)],
+        ["Status", scan.get("status", "—").title()],
     ]
 
     tbl = Table(data, colWidths=[140, 300])
