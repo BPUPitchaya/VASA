@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/resultpage.css" />
+  <title>VASA Scan Results</title>
+  
+</head>
+<body>
+  <header class="header">
+    <h3 class="app-title">Vulnerability Assessment Scanner Application</h3>
+  </header>
+
+  <!-- Page wrapper so content can stretch similar to homepage -->
+  <div class="page-wrapper">
+    <main class="main-layout">
+      <!-- LEFT COLUMN -->
+      <section class="panel panel-left left">
+        <h2 class="section-title">Scan Results</h2>
+
+        <div class="scan-meta">
+          <div class="meta">
+            <strong>Scan Target :</strong>
+            <span id="scan-target">-</span>
+          </div>
+          <div class="meta">
+            <strong>Scan Mode :</strong>
+            <span id="scan-mode">-</span>
+          </div>
+          <div class="meta">
+            <strong>Scan Date :</strong>
+            <span id="scan-date">-</span>
+          </div>
+          <button id="rescanBtn" class="btn btn-primary btn-small">Re-scan</button>
+        </div>
+
+        <!-- Accordion Drop Down -->
+        <div class="accordion">
+          <!-- Open ports -->
+          <button class="acc-btn" data-acc="acc-ports">
+            <span>Open Port and Services</span>
+            <span class="chev">▾</span>
+          </button>
+          <div id="acc-ports" class="acc-panel">
+            <table class="sub-table">
+              <thead>
+                <tr>
+                  <th>Port</th>
+                  <th>Service</th>
+                  <th>Status</th>
+                  <th>Severity</th>
+                  <th>Remediation</th>
+                </tr>
+              </thead>
+              <tbody id="ports-body"><!-- filled by JS --></tbody>
+            </table>
+          </div>
+
+          <!-- Headers -->
+          <button class="acc-btn" data-acc="acc-headers">
+            <span>Insecure HTTP Headers</span>
+            <span class="chev">▾</span>
+          </button>
+          <div id="acc-headers" class="acc-panel">
+            <ul id="headers-list" class="list"><!-- filled by JS --></ul>
+          </div>
+
+          <!-- SSL -->
+          <button class="acc-btn" data-acc="acc-ssl">
+            <span>SSL/TLS Misconfigurations</span>
+            <span class="chev">▾</span>
+          </button>
+          <div id="acc-ssl" class="acc-panel">
+            <ul id="ssl-list" class="list"><!-- filled by JS --></ul>
+          </div>
+
+          <!-- CVE -->
+          <button class="acc-btn" data-acc="acc-cve">
+            <span>CVE Matches</span>
+            <span class="chev">▾</span>
+          </button>
+          <div id="acc-cve" class="acc-panel">
+            <ul id="cve-list" class="list"><!-- filled by JS --></ul>
+          </div>
+        </div>
+
+        <div class="actions-left">
+          <button id="anotherScanBtn" class="btn btn-primary">Another Scan</button>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN -->
+      <section class="panel panel-right right">
+        <div class="kpis">
+          <div class="kpi">
+            <div class="kpi-title">Total Issues Found</div>
+            <div id="total-issues" class="kpi-value">0</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-title">Overall Severity</div>
+            <div id="overall-sev" class="kpi-value">—</div>
+          </div>
+        </div>
+
+        <div class="breakdown card">
+          <h3 class="card-title">Vulnerability Breakdown</h3>
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Issues</th>
+                <th>Severity</th>
+              </tr>
+            </thead>
+            <tbody id="breakdown-body"><!-- filled by JS --></tbody>
+          </table>
+        </div>
+
+        <div class="actions-right">
+          <button id="pdf-report" class="btn btn-primary">Export PDF Report</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/resultpage.js"></script>
+</body>
+</html>
